@@ -7,7 +7,7 @@ Core repo for election results data acquisition, transformation and output.
 
 
 Create a sandboxed development environment using [virtualenv](http://www.virtualenv.org/en/latest/).
-Below is based on plain vanilla virtualenv, but you can make your world a much happier 
+Below is based on plain vanilla virtualenv, but you can make your world a much happier place
 by using the most excellent [virtualenvwrapper](http://virtualenvwrapper.readthedocs.org/en/latest/).
 
 ```bash
