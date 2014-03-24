@@ -3,6 +3,9 @@ Standardize names of data files on Missouri Secretary of State website
 and save to mappings/filenames.json
 """
 from collections import defaultdict
+import os.path
+
+import unicodecsv
 
 from openelex.api import elections as elec_api
 from openelex.base.datasource import BaseDatasource
@@ -53,6 +56,35 @@ class Datasource(BaseDatasource):
                 year: self._elections[year],
             }
         return self._elections
+
+    @property
+    def counties(self):
+        """
+        Access the contents of the name/FIPS/OCD CSV stored in this
+        module.
+        """
+        if not hasattr(self, '_counties'):
+            _counties = {
+                'by_fips': {},
+                'by_name': {},
+                'by_ocd': {},
+            }
+            self._counties = counties
+            by_fips = _counties['by_fips']
+            by_name = _counties['by_name']
+            by_ocd = _counties['by_ocd']
+
+            input_file = open(
+                os.path.join(os.path.dirname(__file__), 'mappings', 'mo.csv'),
+                'r')
+            reader = unicodecsv.DictReader(input_file,)
+            for row in reader:
+                by_fips[row['fips']] = row
+                by_name[row['county']] = row
+                by_ocd[row['ocd_id']] = row
+            input_file.close()
+
+        return self._counties
 
     def _build_mappings(self, year, elections):
         pass  # TODO: Add this.
