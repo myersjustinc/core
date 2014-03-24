@@ -12,6 +12,25 @@ from openelex.base.datasource import BaseDatasource
 
 
 class Datasource(BaseDatasource):
+    MAPPING_METHODS = [
+        {
+            'method': '_build_sosenr_mapping',
+            'portal': 'http://enr.sos.mo.gov/sosenr/state.asp?',
+        },
+        {
+            'method': '_build_enrviews_mapping',
+            'portal': 'http://enr.sos.mo.gov/ENR/Views/TabularData.aspx?',
+        },
+        {
+            'method': '_build_enrweb_allresults_mapping',
+            'portal': 'http://sos.mo.gov/enrweb/allresults.asp?',
+        },
+        {
+            'method': '_build_enrweb_electionselect_mapping',
+            'portal': 'http://sos.mo.gov/enrweb/electionselect.asp?',
+        },
+    ]
+
     def mappings(self, year=None):
         """
         Return array of all elections' standardized metadata,
@@ -87,7 +106,23 @@ class Datasource(BaseDatasource):
         return self._counties
 
     def _build_mappings(self, year, elections):
-        pass  # TODO: Add this.
+        """
+        Return elections' standardized metadata for a given year,
+        dispatching to the appropriate method depending on what
+        reporting system the Secretary of State website is using for
+        those elections
+        """
+        mappings = []
+        for election in elections:
+            portal_link = election['portal_link']
+            method_name = '_build_useless_mapping'
+
+            for mapping_method in self.MAPPING_METHODS:
+                if portal_link.startswith(mapping_method['portal']):
+                    method_name = mapping_method['method']
+
+            mappings.append(getattr(self, method_name)(election))
+        return mappings
 
     def _elec_slug(self, election):
         """
@@ -98,3 +133,18 @@ class Datasource(BaseDatasource):
             election['start_date'],
             election['race_type'].lower()
         ])
+
+    def _build_useless_mapping(self, election):
+        raise NotImplementedError
+
+    def _build_sosenr_mapping(self, election):
+        raise NotImplementedError
+
+    def _build_enrviews_mapping(self, election):
+        raise NotImplementedError
+
+    def _build_enrweb_allresults_mapping(self, election):
+        raise NotImplementedError
+
+    def _build_enrweb_electionselect_mapping(self, election):
+        raise NotImplementedError
