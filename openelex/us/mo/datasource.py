@@ -14,19 +14,19 @@ from openelex.base.datasource import BaseDatasource
 class Datasource(BaseDatasource):
     MAPPING_METHODS = [
         {
-            'method': '_build_sosenr_mapping',
+            'method': '_build_sosenr_mappings',
             'portal': 'http://enr.sos.mo.gov/sosenr/state.asp?',
         },
         {
-            'method': '_build_enrviews_mapping',
+            'method': '_build_enrviews_mappings',
             'portal': 'http://enr.sos.mo.gov/ENR/Views/TabularData.aspx?',
         },
         {
-            'method': '_build_enrweb_allresults_mapping',
+            'method': '_build_enrweb_allresults_mappings',
             'portal': 'http://sos.mo.gov/enrweb/allresults.asp?',
         },
         {
-            'method': '_build_enrweb_electionselect_mapping',
+            'method': '_build_enrweb_electionselect_mappings',
             'portal': 'http://sos.mo.gov/enrweb/electionselect.asp?',
         },
     ]
@@ -121,7 +121,7 @@ class Datasource(BaseDatasource):
                 if portal_link.startswith(mapping_method['portal']):
                     method_name = mapping_method['method']
 
-            mappings.append(getattr(self, method_name)(election))
+            mappings.extend(getattr(self, method_name)(election))
         return mappings
 
     def _elec_slug(self, election):
@@ -134,17 +134,17 @@ class Datasource(BaseDatasource):
             election['race_type'].lower()
         ])
 
-    def _build_useless_mapping(self, election):
+    def _build_useless_mappings(self, election):
         raise NotImplementedError
 
-    def _build_sosenr_mapping(self, election):
+    def _build_sosenr_mappings(self, election):
         raise NotImplementedError
 
-    def _build_enrviews_mapping(self, election):
+    def _build_enrviews_mappings(self, election):
         raise NotImplementedError
 
-    def _build_enrweb_allresults_mapping(self, election):
+    def _build_enrweb_allresults_mappings(self, election):
         raise NotImplementedError
 
-    def _build_enrweb_electionselect_mapping(self, election):
+    def _build_enrweb_electionselect_mappings(self, election):
         raise NotImplementedError
