@@ -3,6 +3,7 @@ Standardize names of data files on Missouri Secretary of State website
 and save to mappings/filenames.json
 """
 from collections import defaultdict
+import copy
 import os.path
 
 import unicodecsv
@@ -98,7 +99,7 @@ class Datasource(BaseDatasource):
                 'by_name': {},
                 'by_ocd': {},
             }
-            self._counties = counties
+            self._counties = _counties
             by_fips = _counties['by_fips']
             by_name = _counties['by_name']
             by_ocd = _counties['by_ocd']
@@ -187,7 +188,18 @@ class Datasource(BaseDatasource):
         }
         mappings.append(state_mapping)
 
-        # TODO: Add county-level mappings.
+        # TODO: Figure out whether county mapping exists.
+
+        county_mapping = copy.copy(state_mapping)
+        sorted_fips = sorted(self.counties['by_fips'].keys())
+        county_mapping['raw_url'] += '&cids=' + '%2C+'.join([
+            self.counties['by_fips'][fips]['enrweb_allresults_id']
+            for fips in sorted_fips])
+        county_mapping['raw_url'] = county_mapping['raw_url'].replace(
+            'allresults.asp', 'countyresults.asp')
+        county_mapping['generated_name'] = (
+            self._get_election_filename_base(election) + 'county.html')
+        mappings.append(county_mapping)
 
         return mappings
 
