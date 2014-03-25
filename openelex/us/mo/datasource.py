@@ -26,10 +26,20 @@ class Datasource(BaseDatasource):
             'portal': 'http://sos.mo.gov/enrweb/allresults.asp?',
         },
         {
+            'method': '_build_enrweb_allresults_mappings',
+            'portal': 'http://sos.mo.gov/Enrweb/allresults.asp?',
+        },
+        {
+            'method': '_build_enrweb_allresults_mappings',
+            'portal': 'http://www.sos.mo.gov/enrweb/allresults.asp?',
+        },
+        {
             'method': '_build_enrweb_electionselect_mappings',
             'portal': 'http://sos.mo.gov/enrweb/electionselect.asp?',
         },
     ]
+
+    OCD_ID_ROOT = 'ocd-division/country:us/state:mo'
 
     def mappings(self, year=None):
         """
@@ -115,7 +125,7 @@ class Datasource(BaseDatasource):
         mappings = []
         for election in elections:
             portal_link = election['portal_link']
-            method_name = '_build_useless_mapping'
+            method_name = '_build_useless_mappings'
 
             for mapping_method in self.MAPPING_METHODS:
                 if portal_link.startswith(mapping_method['portal']):
@@ -134,17 +144,55 @@ class Datasource(BaseDatasource):
             election['race_type'].lower()
         ])
 
+    def _get_election_filename_base(self, election, county=None):
+        filename = '{start_date}__{state}__{race_type}__'.format(
+            start_date=election['start_date'].replace('-', ''),
+            state=self.state.lower(),
+            race_type=election['race_type'])
+        if election['special']:
+            filename += 'special__'
+        return filename
+
     def _build_useless_mappings(self, election):
-        raise NotImplementedError
+        return [{
+            'not_implemented': 'useless',
+            'raw_url': election['portal_link'],
+        }]
 
     def _build_sosenr_mappings(self, election):
-        raise NotImplementedError
+        return [{
+            'not_implemented': 'sosenr',
+            'raw_url': election['portal_link'],
+        }]
 
     def _build_enrviews_mappings(self, election):
-        raise NotImplementedError
+        return [{
+            'not_implemented': 'enrviews',
+            'raw_url': election['portal_link'],
+        }]
 
     def _build_enrweb_allresults_mappings(self, election):
-        raise NotImplementedError
+        mappings = []
+
+        state_mapping = {
+            'ocd_id': self.OCD_ID_ROOT,
+            'election': '{state}-{start_date}-{race_type}'.format(
+                state=self.state,
+                start_date=election.get('start_date', ''),
+                race_type=election['race_type']),
+            'raw_url': election['portal_link'],
+            'generated_name': (
+                self._get_election_filename_base(election) + 'state.html'),
+            'name': 'Missouri',
+        }
+        mappings.append(state_mapping)
+
+        # TODO: Add county-level mappings.
+
+        return mappings
 
     def _build_enrweb_electionselect_mappings(self, election):
-        raise NotImplementedError
+        return [{
+            'not_implemented': 'enrweb_electionselect',
+            'raw_url': election['portal_link'],
+        }]
