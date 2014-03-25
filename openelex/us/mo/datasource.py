@@ -5,6 +5,7 @@ and save to mappings/filenames.json
 from collections import defaultdict
 import copy
 import os.path
+import re
 
 import unicodecsv
 
@@ -204,7 +205,11 @@ class Datasource(BaseDatasource):
         return mappings
 
     def _build_enrweb_electionselect_mappings(self, election):
-        return [{
-            'not_implemented': 'enrweb_electionselect',
-            'raw_url': election['portal_link'],
-        }]
+        # FIXME: This isn't always working, especially with the `arc` GET
+        # parameter.
+        election_copy = copy.copy(election)
+        election_copy['portal_link'] = re.sub(
+            r'(arc$|arc&)', 'arc=1&',
+            election_copy['portal_link'].replace(
+                'electionselect.asp', 'allresults.asp')).replace('&&', '&')
+        return self._build_enrweb_allresults_mappings(election_copy)
