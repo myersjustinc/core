@@ -66,7 +66,7 @@ class Datasource(BaseDatasource):
             # Store elections by year
             self._elections = defaultdict(list)
             for election in elec_api.find(self.state):
-                election['slug'] = self._elec_slug(election)
+                election['slug'] = self._get_election_slug(election)
                 election_year = int(election['start_date'][:4])
                 self._elections[election_year].append(election)
         if year:
@@ -124,7 +124,7 @@ class Datasource(BaseDatasource):
             mappings.extend(getattr(self, method_name)(election))
         return mappings
 
-    def _elec_slug(self, election):
+    def _get_election_slug(self, election):
         """
         Build standard identifier for an election
         """
