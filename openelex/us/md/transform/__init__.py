@@ -7,6 +7,9 @@ from openelex.base.transform import Transform, registry
 from openelex.models import Candidate, Contest, Office, Party, RawResult, Result
 from openelex.lib.text import ocd_type_id
 from openelex.lib.insertbuffer import BulkInsertBuffer
+from ..validate import (validate_precinct_names_normalized,
+    validate_no_baltimore_city_comptroller,
+    validate_uncommitted_primary_state_legislative_results)
 
 
 # Lists of fields on RawResult that are contributed to the canonical
@@ -30,12 +33,16 @@ class BaseTransform(Transform):
     """
 
     PARTY_MAP = {
-        'BOT': 'UNF',
-        'Democratic': 'DEM',
-        'Republican': 'REP',
+        'Both Parties': 'BOT',
+        'Democratic': 'D',
+        'DEM': 'D',
+        'Green': 'GRE',
+        'GRN': 'GRE',
         'Libertarian': 'LIB',
-        'Green': 'GRN',
-        'Unaffiliated': 'UNF',
+        'Republican': 'R',
+        'REP': 'R',
+        'Unaffiliated': 'UN',
+        'UNF': 'UN',
     }
     """
     Map of party values as they appear in MD raw results to canonical
@@ -43,7 +50,7 @@ class BaseTransform(Transform):
 
     In 2002, the values are party names.  Map them to abbreviations.
 
-    From 2003 onward, the values are party abbreviations and in most
+    From 2003 onward, the values are party abbreviations and in many
     cases match the canonical abbreviations.
     """
 
@@ -57,6 +64,7 @@ class BaseTransform(Transform):
         super(BaseTransform, self).__init__()
         self._office_cache = {}
         self._party_cache = {}
+        self._contest_cache = {}
 
     def get_rawresults(self):
         # Use a non-caching queryset because otherwise we run out of memory
@@ -148,12 +156,6 @@ class BaseTransform(Transform):
                 raise
 
     def _clean_party(self, party):
-        if party == 'Both Parties':
-            # 2002 candidates have "Both Parties" in the write-in
-            # field
-            # TODO: Is this the right way to handle this?
-            return None
-
         try:
             return self.PARTY_MAP[party]
         except KeyError:
@@ -195,66 +197,6 @@ class BaseTransform(Transform):
 
         return fields
 
-
-class CreateContestsTransform(BaseTransform):
-    name = 'create_unique_contests'
-
-    def __call__(self):
-        contests = []
-        seen = set()
-
-        for rr in self.get_rawresults():
-            key = self._contest_key(rr)
-            if key not in seen:
-                fields = self.get_contest_fields(rr)
-                fields['updated'] = fields['created'] = datetime.now()
-                contest = Contest(**fields)
-                contests.append(contest)
-                seen.add(key)
-
-        Contest.objects.insert(contests, load_bulk=False)
-        print "Created %d contests." % len(contests)
-
-    def reverse(self):
-        Contest.objects.filter(state='MD').delete()
-
-    def _contest_key(self, raw_result):
-        slug = raw_result.contest_slug
-        return (raw_result.election_id, slug)
-
-
-class CreateCandidatesTransform(BaseTransform):
-    name = 'create_unique_candidates'
-
-    def __init__(self):
-        super(CreateCandidatesTransform, self).__init__()
-        self._contest_cache = {}
-
-    def __call__(self):
-        candidates = []
-        seen = set()
-
-        for rr in self.get_rawresults():
-            key = (rr.election_id, rr.candidate_slug)
-            if key not in seen:
-                fields = self.get_candidate_fields(rr)
-                fields['contest'] = self.get_contest(rr) 
-                if "other" in fields['full_name'].lower():
-                    if fields['full_name'] == "Other Write-Ins":
-                        fields['flags'] = ['aggregate',]
-                    else:
-                        # As far as I can tell the value should always be
-                        # "Other Write-Ins", but output a warning to let us
-                        # know about some cases we may be missing.
-                        logging.warn("'other' found in candidate name field"
-                                "value: '%s'" % rr.full_name)
-                candidate = Candidate(**fields)
-                candidates.append(candidate)
-                seen.add(key)
-
-        Candidate.objects.insert(candidates, load_bulk=False)
-        print "Created %d candidates." % len(candidates) 
-
     def get_contest(self, raw_result):
         """
         Returns the Contest model instance for a given RawResult.
@@ -276,12 +218,78 @@ class CreateCandidatesTransform(BaseTransform):
             self._contest_cache[key] = contest
             return contest
 
+
+class CreateContestsTransform(BaseTransform):
+    name = 'create_unique_contests'
+
+    def __call__(self):
+        contests = []
+        seen = set()
+
+        for rr in self.get_rawresults():
+            key = self._contest_key(rr)
+            if key not in seen:
+                fields = self.get_contest_fields(rr)
+                fields['updated'] = fields['created'] = datetime.now()
+                contest = Contest(**fields)
+                contests.append(contest)
+                seen.add(key)
+
+        Contest.objects.insert(contests, load_bulk=False)
+        print "Created %d contests." % len(contests)
+
     def reverse(self):
-        Candidate.objects.filter(state='MD').delete()
+        old = Contest.objects.filter(state='MD')
+        print "\tDeleting %d previously created contests" % old.count() 
+        old.delete()
+
+    def _contest_key(self, raw_result):
+        slug = raw_result.contest_slug
+        return (raw_result.election_id, slug)
+
+
+class CreateCandidatesTransform(BaseTransform):
+    name = 'create_unique_candidates'
+
+    def __init__(self):
+        super(CreateCandidatesTransform, self).__init__()
+
+    def __call__(self):
+        candidates = []
+        seen = set()
+
+        for rr in self.get_rawresults():
+            key = (rr.election_id, rr.contest_slug, rr.candidate_slug)
+            if key not in seen:
+                fields = self.get_candidate_fields(rr)
+                fields['contest'] = self.get_contest(rr) 
+                if "other" in fields['full_name'].lower():
+                    if fields['full_name'] == "Other Write-Ins":
+                        fields['flags'] = ['aggregate',]
+                    else:
+                        # As far as I can tell the value should always be
+                        # "Other Write-Ins", but output a warning to let us
+                        # know about some cases we may be missing.
+                        logging.warn("'other' found in candidate name field"
+                                "value: '%s'" % rr.full_name)
+                candidate = Candidate(**fields)
+                candidates.append(candidate)
+                seen.add(key)
+
+        Candidate.objects.insert(candidates, load_bulk=False)
+        print "Created %d candidates." % len(candidates) 
+
+
+    def reverse(self):
+        old = Candidate.objects.filter(state='MD')
+        print "\tDeleting %d previously created candidates" % old.count() 
+        old.delete()
 
 
 class CreateResultsTransform(BaseTransform): 
     name = 'create_unique_results'
+
+    auto_reverse = True
 
     def __init__(self):
         super(CreateResultsTransform, self).__init__()
@@ -298,14 +306,14 @@ class CreateResultsTransform(BaseTransform):
         return Result.objects.filter(election_id__in=election_ids)
 
     def __call__(self):
-        # Delete existing results
-        self.reverse()
-
         results = self._create_results_collection() 
 
         for rr in self.get_rawresults():
             fields = self._get_fields(rr, result_fields)
-            fields['candidate'] = self.get_candidate(rr)
+            fields['contest'] = self.get_contest(rr)
+            fields['candidate'] = self.get_candidate(rr, extra={
+                'contest': fields['contest'],
+            })
             fields['contest'] = fields['candidate'].contest 
             fields['raw_result'] = rr
             party = self.get_party(rr)
@@ -347,12 +355,22 @@ class CreateResultsTransform(BaseTransform):
         print "\tDeleting %d previously loaded results" % old_results.count() 
         old_results.delete()
 
-    def get_candidate(self, raw_result):
-        key = "%s-%s" % (raw_result.election_id, raw_result.candidate_slug)
+    def get_candidate(self, raw_result, extra={}):
+        """
+        Get the Candidate model for a RawResult
+
+        Keyword arguments:
+
+        * extra - Dictionary of extra query parameters that will
+                  be used to select the candidate. 
+        """
+        key = (raw_result.election_id, raw_result.contest_slug,
+            raw_result.candidate_slug)
         try:
             return self._candidate_cache[key]
         except KeyError:
             fields = self.get_candidate_fields(raw_result)
+            fields.update(extra)
             del fields['source']
             try:
                 candidate = Candidate.objects.get(**fields)
@@ -377,13 +395,17 @@ class CreateResultsTransform(BaseTransform):
 
     def _parse_write_in(self, raw_result):
         """
-        Converts raw winner value into boolean
+        Converts raw write-in value into boolean
         """
         if raw_result.write_in == 'Y':
             # Write-in in post-2002 contest
             return True
         elif raw_result.family_name == 'zz998':
             # Write-in in 2002 contest
+            return True
+        elif raw_result.write_in == "Write-In":
+            return True
+        elif raw_result.full_name == "Other Write-Ins":
             return True
         else:
             return False
@@ -423,15 +445,14 @@ class CreateDistrictResultsTransform(CreateResultsTransform):
 
     name = 'create_district_results_from_county_splits' 
 
+    auto_reverse = True
+
     def __init__(self):
         super(CreateDistrictResultsTransform, self).__init__()
         self._results_cache = {}
 
     def __call__(self):
         results = []
-
-        # Delete previously created results
-        self.reverse()
 
         for rr in self.get_rawresults(): 
             # We only grab the meta fields here because we're aggregating results.
@@ -565,6 +586,95 @@ class Create2000PrimaryCongressCountyResultsTransform(CreateResultsTransform):
             office="Representative in Congress")
 
 
+class NormalizePrecinctTransform(BaseTransform):
+    name = 'normalize_precinct_names'
+
+    def get_results(self):
+        return Result.objects.filter(state='MD',
+            reporting_level='precinct', election_id='md-2006-11-07-general',
+            source='20061107__md__general__anne_arundel__precinct.csv')
+
+    def update_ocd_id(self, ocd_id, jurisdiction):
+        ocd_id_bits = ocd_id.split('/')
+        ocd_id_bits.pop()
+        ocd_id_bits.append(ocd_type_id("precinct:%s" % jurisdiction))
+        return '/'.join(ocd_id_bits)
+
+    def __call__(self):
+        for result in self.get_results():
+            district, precinct = result.jurisdiction.split('-')
+            result.jurisdiction = "%s-%s" % (district,
+                    precinct.zfill(3))
+            result.ocd_id = self.update_ocd_id(result.ocd_id,
+                result.jurisdiction)
+            result.save()
+
+    def reverse(self):
+        for result in self.get_results():
+            district, precinct = result.jurisdiction.split('-')
+            result.jurisdiction = "%s-%s" % (district,
+                    precinct.lstrip('0'))
+            result.ocd_id = self.update_ocd_id(result.ocd_id,
+                result.jurisdiction)
+            result.save()
+
+
+class RemoveBaltimoreCityComptroller(BaseTransform):
+    """
+    Remove Baltimore City comptroller results.
+
+    Maryland election results use the string "Comptroller" for both the 
+    state comptroller and the Baltimore City Comptroller.  We're only
+    interested in the state comptroller.
+
+    """
+    name = 'remove_baltimore_city_comptroller'
+
+    def __call__(self):
+        election_id = 'md-2004-11-02-general'
+        office = Office.objects.get(state='MD', name='Comptroller')
+        Contest.objects.filter(election_id=election_id, office=office).delete()
+        Candidate.objects.filter(election_id=election_id,
+            contest_slug='comptroller').delete()
+        Result.objects.filter(election_id=election_id,
+            contest_slug='comptroller').delete()
+
+
+class CombineUncommittedPresStateLegislativeResults(BaseTransform):
+    """
+    Combine "Uncommitted to Any Presidential Candidate" results.
+    
+    In the 2008 Democratic primary, in the results aggregated at the State
+    Legislative level, there are multiple rows for the
+    "Uncommitted to Any Presidential Candidate" pseudo-candidate, with empty
+    values for many of the state legislative district.  There appears to be
+    one row per county.  Most of these entries are empty.
+
+    Combine these into a single result per state legislative district. 
+    """
+    name = 'combine_uncommitted_pres_state_leg_results'
+
+    def __call__(self):
+        results = Result.objects.filter(election_id='md-2008-02-12-primary',
+            reporting_level='state_legislative',
+            contest_slug='president-d',
+            candidate_slug='uncommitted-to-any-presidential-candidate')
+        districts = results.distinct('jurisdiction')
+        assert len(districts) == 65
+        for district in districts:
+            district_results = results.filter(jurisdiction=district)
+            assert district_results.count() == 24 
+            total_votes = 0
+            # Save the first result.  We'll use this for the combined results
+            first_result = district_results[0]
+            for result in district_results:
+                total_votes += result.votes
+            assert total_votes != 0
+            first_result.votes = total_votes
+            first_result.save()
+            district_results.filter(id__ne=first_result.id).delete()
+
+
 # TODO: When should we create a Person
 
 #def standardize_office_and_district():
@@ -578,5 +688,11 @@ registry.register('md', CreateCandidatesTransform)
 registry.register('md', CreateResultsTransform)
 registry.register('md', CreateDistrictResultsTransform)
 registry.register('md', Create2000PrimaryCongressCountyResultsTransform)
+registry.register('md', NormalizePrecinctTransform,
+    [validate_precinct_names_normalized])
+registry.register('md', RemoveBaltimoreCityComptroller,
+    [validate_no_baltimore_city_comptroller])
+registry.register('md', CombineUncommittedPresStateLegislativeResults,
+    [validate_uncommitted_primary_state_legislative_results])
 #registry.register('md', standardize_office_and_district)
 #registry.register('md', clean_vote_counts)
