@@ -2,11 +2,13 @@
 Standardize names of data files on Missouri Secretary of State website
 and save to mappings/filenames.json
 """
+from BeautifulSoup import BeautifulSoup
 from collections import defaultdict
 import copy
 import os.path
 import re
 
+import requests
 import unicodecsv
 
 from openelex.api import elections as elec_api
@@ -196,14 +198,44 @@ class Datasource(BaseDatasource):
         # previously expected, since the ID for each county changes each
         # election.
 
+        county_mapping = copy.copy(state_mapping)
+        county_mapping['raw_url'] += '&cids=' + '%2C+'.join(
+            sorted(self._get_enrweb_county_ids(election).values()))
+        county_mapping['raw_url'] = county_mapping['raw_url'].replace(
+            'allresults.asp', 'countyresults.asp')
+        county_mapping['generated_name'] = (
+            self._get_election_filename_base(election) + 'county.html')
+        mappings.append(county_mapping)
+
         return mappings
 
+    def _get_enrweb_county_ids(self, election):
+        main_url = election['portal_link']
+        county_select_url = main_url.replace(
+            'allresults.asp', 'countyselect.asp')
+
+        r = requests.get(county_select_url)
+        soup = BeautifulSoup(r.text)
+        county_options = soup.find('select', {
+            'name': 'cboCounties',
+        }).findAll('option')
+
+        county_ids = {}
+        counties_by_name = self.counties['by_enrweb']
+        for county_option in county_options:
+            enrweb_county_name = county_option.text
+            try:
+                standardized_county_name = counties_by_name[
+                    enrweb_county_name]['county']
+            except KeyError:
+                continue
+            county_id = dict(county_option.attrs)['value']
+            county_ids[standardized_county_name] = county_id
+
+        return county_ids
+
     def _build_enrweb_electionselect_mappings(self, election):
-        # FIXME: This isn't always working, especially with the `arc` GET
-        # parameter.
-        election_copy = copy.copy(election)
-        election_copy['portal_link'] = re.sub(
-            r'(arc$|arc&)', 'arc=1&',
-            election_copy['portal_link'].replace(
-                'electionselect.asp', 'allresults.asp')).replace('&&', '&')
-        return self._build_enrweb_allresults_mappings(election_copy)
+        return [{
+            'not_implemented': 'enrweb_electionselect',
+            'raw_url': election['portal_link'],
+        }]
