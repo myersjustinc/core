@@ -99,11 +99,13 @@ class Datasource(BaseDatasource):
                 'by_fips': {},
                 'by_name': {},
                 'by_ocd': {},
+                'by_enrweb': {},
             }
             self._counties = _counties
             by_fips = _counties['by_fips']
             by_name = _counties['by_name']
             by_ocd = _counties['by_ocd']
+            by_enrweb = _counties['by_enrweb']
 
             input_file = open(
                 os.path.join(os.path.dirname(__file__), 'mappings', 'mo.csv'),
@@ -113,6 +115,7 @@ class Datasource(BaseDatasource):
                 by_fips[row['fips']] = row
                 by_name[row['county']] = row
                 by_ocd[row['ocd_id']] = row
+                by_enrweb[row['enrweb_name']] = row
             input_file.close()
 
         return self._counties
