@@ -189,18 +189,9 @@ class Datasource(BaseDatasource):
         }
         mappings.append(state_mapping)
 
-        # TODO: Figure out whether county mapping exists.
-
-        county_mapping = copy.copy(state_mapping)
-        sorted_fips = sorted(self.counties['by_fips'].keys())
-        county_mapping['raw_url'] += '&cids=' + '%2C+'.join([
-            self.counties['by_fips'][fips]['enrweb_allresults_id']
-            for fips in sorted_fips])
-        county_mapping['raw_url'] = county_mapping['raw_url'].replace(
-            'allresults.asp', 'countyresults.asp')
-        county_mapping['generated_name'] = (
-            self._get_election_filename_base(election) + 'county.html')
-        mappings.append(county_mapping)
+        # TODO: Generate county mapping URL. This is way more of a pain than
+        # previously expected, since the ID for each county changes each
+        # election.
 
         return mappings
 
