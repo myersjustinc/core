@@ -194,18 +194,15 @@ class Datasource(BaseDatasource):
         }
         mappings.append(state_mapping)
 
-        # TODO: Generate county mapping URL. This is way more of a pain than
-        # previously expected, since the ID for each county changes each
-        # election.
-
-        county_mapping = copy.copy(state_mapping)
-        county_mapping['raw_url'] += '&cids=' + '%2C+'.join(
-            sorted(self._get_enrweb_county_ids(election).values()))
-        county_mapping['raw_url'] = county_mapping['raw_url'].replace(
-            'allresults.asp', 'countyresults.asp')
-        county_mapping['generated_name'] = (
-            self._get_election_filename_base(election) + 'county.html')
-        mappings.append(county_mapping)
+        if election['county_level']:
+            county_mapping = copy.copy(state_mapping)
+            county_mapping['raw_url'] += '&cids=' + '%2C+'.join(
+                sorted(self._get_enrweb_county_ids(election).values()))
+            county_mapping['raw_url'] = county_mapping['raw_url'].replace(
+                'allresults.asp', 'countyresults.asp')
+            county_mapping['generated_name'] = (
+                self._get_election_filename_base(election) + 'county.html')
+            mappings.append(county_mapping)
 
         return mappings
 
