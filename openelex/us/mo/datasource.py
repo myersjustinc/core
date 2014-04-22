@@ -232,6 +232,15 @@ class Datasource(BaseDatasource):
         return county_ids
 
     def _build_enrweb_electionselect_mappings(self, election):
+        # electionselect.asp portal links (all the same) are there because all
+        # of those election API objects refer to dates where multiple special
+        # elections took place. Either this function should scrape that portal
+        # for all elections taking place on that day and somehow generate
+        # useful mappings for that, or this function should be removed and
+        # multiple election API objects created--one for each seat for which a
+        # special election was held--and portal links adjusted to use
+        # _get_enrweb_county_ids instead.
+
         return [{
             'not_implemented': 'enrweb_electionselect',
             'raw_url': election['portal_link'],
